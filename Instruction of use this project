@@ -1,0 +1,15 @@
+               Instruction of use this project 
+
+###001-Please reach out to the website of Kaggle to download UCF-crime(https://www.kaggle.com/datasets/odins0n/ucf-crime-dataset)
+###002-Download all the AVA datasets that I provided on my GitHub.
+###003-Please choose either cloud- or computer-based to do it (I highly suggest that you use it from your computer because in the end you have to deploy it and test it). 
+###004-And start with either the AVA  or UCF crime dataset.
+###005-After finishing both of them, you need to combine two of them. 
+###006-In the end, please use different approach to see performance of models 
+
+
+
+
+
+That’s the main concept of doing both different datasets. 
+As my personal experience, I don’t suggest you use this one for any purpose because it can be much more complex and time-consuming. GOOD LUCK
