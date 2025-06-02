@@ -1,0 +1,101 @@
+########please resset drive directory 
+crime_root = '/content/drive/MyDrive/datasets/Crime'
+
+label_map = {
+    "Normal":0,
+    "Abuse":1,
+    "Arrest":1,
+    "Arson":1,
+    "Assault":1,
+    "Burglary":1,
+    "Explosion":1,
+    "Fighting":1,
+    "RoadAccidents":1,
+    "Robbery":1,
+    "Shooting":1,
+    "Shoplifting":1,
+    "Stealing":1,
+    "Vandalism":1
+}
+# maximun in each category clips
+max_clips_per_class = 100
+
+(X_train, Y_train), (X_test, Y_test) = Crime_png.load_data(
+    crime_root          = crime_root,
+    label_map           = label_map,
+    clip_len            = 16,
+    img_size            = (64,64),
+    test_size           = 0.2,
+    skip_incomplete     = True,
+    random_state        = 42,
+    max_clips_per_class = max_clips_per_class 
+)
+
+
+
+
+train_seq, test_seq = Crime_png.load_sequence(
+    crime_root          = crime_root,
+    label_map           = label_map,
+    clip_len            = 16,
+    img_size            = (64,64),
+    test_size           = 0.2,
+    skip_incomplete     = True,
+    random_state        = 42,
+    batch_size          = 4,
+    shuffle             = True,
+    max_clips_per_class = max_clips_per_class  
+)
+
+model=Sequential()
+model.add(Conv3D(32, kernel_size=(3,3,3), padding='same', activation='relu',
+                     input_shape=(16,64,64,3),
+                 kernel_regularizer=regularizers.l2(0.001)))
+model.add(BatchNormalization())
+model.add(MaxPooling3D(pool_size=(2,2,2)))
+model.add(Dropout(0.3))
+model.add(Conv3D(64, kernel_size=(3,3,3), padding='same', activation='relu',
+                 kernel_regularizer=regularizers.l2(0.001)))
+model.add(BatchNormalization())
+model.add(MaxPooling3D(pool_size=(2,2,2)))
+model.add(Dropout(0.3))
+model.add(Flatten())
+model.add(Dense(512,activation="relu",kernel_regularizer=regularizers.l2(0.001)))
+model.add(Dropout(0.4))
+model.add(Dense(1, activation="sigmoid"))
+model.summary()
+
+
+
+optimizer = Adam(learning_rate=1e-4)
+
+loss_fn = BinaryCrossentropy(label_smoothing=0.1)
+model.compile(loss=loss_fn,optimizer=optimizer,metrics=["accuracy"])
+model.summary()
+
+
+from sklearn.utils.class_weight import compute_class_weight
+
+
+y_train_flat = Y_train.flatten()
+cw = compute_class_weight('balanced', classes=np.unique(y_train_flat), y=y_train_flat)
+class_weight_dict = {int(cls): weight for cls, weight in zip(np.unique(y_train_flat), cw)}
+print(class_weight_dict)
+
+history=model.fit(train_seq,
+          validation_data=test_seq,
+          epochs=20,
+          verbose=1,
+          class_weight=class_weight_dict)
+
+
+
+
+
+
+
+
+
+
+
+
