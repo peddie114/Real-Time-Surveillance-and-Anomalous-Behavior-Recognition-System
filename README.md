@@ -9,7 +9,7 @@ Gained in-depth knowledge of the UCF-Crime and AVA datasets, understanding their
 Experienced the challenges and rewards of integrating multiple modules, learning to coordinate video-level anomaly detection with person-level action recognition for real-time surveillance.
 Acquired valuable feedback through performance evaluation and real-case testing, which further enhanced our ability to fine-tune the models.
 
-                                                                              Introduction
+                                              Introduction
 
 
 1.1 Background
