@@ -1,0 +1,189 @@
+
+frame_list = []
+for _, row in grouped_subset.iterrows():
+    image_path = get_keyframe_path(row["middle_frame_timestamp"])
+    img = cv2.imread(image_path)
+    if img is None:
+        continue 
+
+    H, W = img.shape[:2]
+    x1, y1, x2, y2 = int(row["x1"] * W), int(row["y1"] * H), int(row["x2"] * W), int(row["y2"] * H)：row["label"]
+    binary_label = 0
+    for action in row["action_ids"]:
+        if convert_to_binary(action) == 1:
+            binary_label = 1
+            break
+    frame_list.append((image_path, [(x1, y1, x2, y2)], binary_label))
+
+
+
+class AVASequence(Sequence):
+    def __init__(self, frame_list, num_classes,
+                 batch_size=2, img_size=(224,224),
+                 shuffle=True):
+        self.frame_list = frame_list
+        self.num_classes = num_classes
+        self.batch_size = batch_size
+        self.img_size = img_size
+        self.shuffle = shuffle
+        self.indices = np.arange(len(frame_list))
+        if self.shuffle:
+            np.random.shuffle(self.indices)
+
+    def __len__(self):
+        return int(np.ceil(len(self.frame_list) / self.batch_size))
+
+    def on_epoch_end(self):
+        if self.shuffle:
+            np.random.shuffle(self.indices)
+
+    def __getitem__(self, idx):
+        start_i = idx * self.batch_size
+        end_i   = min((idx+1) * self.batch_size, len(self.frame_list))
+        batch_indices = self.indices[start_i:end_i]
+
+        X_batch = []
+        Y_batch = []
+
+        for i in batch_indices:
+            image_path, bboxes, labels = self.frame_list[i]
+
+            img = cv2.imread(image_path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img, self.img_size)
+            img = img.astype(np.float32) / 255.0
+
+            X_batch.append(img)
+            Y_batch.append(labels)
+
+        X_batch = np.array(X_batch, dtype=np.float32)
+        Y_batch = np.array(Y_batch, dtype=np.float32)
+        if Y_batch.ndim == 1:
+            Y_batch = np.expand_dims(Y_batch, axis=1)
+        return X_batch, Y_batch
+
+train_frame_list, test_frame_list=train_test_split(frame_list,test_size=0.3,random_state=42)
+
+batch_size = 1
+img_size = (224, 224)
+num_classes = 1
+
+train_seq = AVASequence(frame_list, num_classes=num_classes, batch_size=batch_size, img_size=img_size, shuffle=True)
+test_seq  = AVASequence(frame_list, num_classes=num_classes, batch_size=batch_size, img_size=img_size, shuffle=False)
+
+
+X_batch, Y_batch = train_seq[0]
+print("Batch images shape:", X_batch.shape)  # (batch_size, 224, 224, 3)
+print("Batch labels shape:", Y_batch.shape)  # (batch_size, 80)
+
+
+unique, counts = np.unique([x[2] for x in train_frame_list], return_counts=True)
+print("Train labels distribution:", dict(zip(unique, counts)))
+
+
+#2D CNN for multi-label classification
+model = Sequential()
+model.add(Conv2D(32, kernel_size=(5,5), padding="same", input_shape=(224,224,3), activation="relu"))
+model.add(MaxPooling2D(pool_size=(2,2)))
+
+model.add(Conv2D(64, kernel_size=(5,5), padding="same", activation="relu"))
+model.add(MaxPooling2D(pool_size=(2,2)))
+
+model.add(Conv2D(128, kernel_size=(5,5), padding="same", activation="relu"))
+model.add(MaxPooling2D(pool_size=(2,2)))
+
+model.add(Dropout(0.5))
+model.add(Flatten())
+model.add(Dense(256, activation="relu"))
+model.add(Dropout(0.5))
+model.add(Dense(1, activation="sigmoid")) 
+optimizer = Adam(learning_rate=0.001)
+model.compile(loss="binary_crossentropy", optimizer=optimizer, metrics=["accuracy"])
+model.summary()
+
+y_train = np.array([x[2] for x in train_frame_list])
+y_train_flat = y_train.flatten()
+cw = compute_class_weight('balanced', classes=np.unique(y_train_flat), y=y_train_flat)
+class_weight_dict = {int(cls): weight for cls, weight in zip(np.unique(y_train_flat), cw)}
+print("Class weights:", class_weight_dict)
+
+
+
+early_stop = EarlyStopping(monitor='val_loss', patience=7, restore_best_weights=True, verbose=1)
+lr_reducer = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
+
+history=model.fit(train_seq,validation_data=test_seq,epochs=20,verbose=0,class_weight=class_weight_dict,callbacks=[early_stop, lr_reducer] )
+print("testing.....")
+loss,accuracy=model.evaluate(test_seq)
+print("test for data accuracy",accuracy)
+
+
+loss=history.history["loss"]
+epochs=range(1,len(loss)+1)
+val_loss=history.history["val_loss"]
+plt.plot(epochs,loss,"bo-",label="Training loss")
+plt.plot(epochs,val_loss,"ro-",label="Validation loss")
+plt.title("Training and Validation Loss")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.legend(loc=0)
+plt.show()
+
+
+acc=history.history["accuracy"]
+epochs=range(1,len(acc)+1)
+val_acc=history.history["val_accuracy"]
+plt.plot(epochs,acc,"bo-",label="Training_acc")
+plt.plot(epochs,val_acc,"ro-",label="Validation_acc")
+plt.title("Training and Validation Accuracy")
+plt.xlabel("Epochs")
+plt.ylabel("Accuracy")
+plt.legend(loc=0)
+plt.show()
+
+
+
+for X_batch, Y_batch in test_seq:
+    preds = model.predict(X_batch)  # preds shape: (batch_size, 1)
+    print("prediction percentage(raw):", preds.flatten())
+    break
+unique, counts = np.unique(Y_train, return_counts=True)
+print("training label：", dict(zip(unique, counts)))
+
+
+
+y_ava_pred_all=[]
+y_ava_true_all=[]
+
+threshold=0.45
+for X_batch, Y_batch in test_seq:
+    preds= model.predict(X_batch)
+    y_ava_pred_batch= (preds.flatten()>=threshold).astype(int)
+    y_ava_pred_all.append(y_ava_pred_batch)
+    y_ava_true_all.append(Y_batch.flatten())
+
+y_ava_pred_all=np.concatenate(y_ava_pred_all,axis=0)
+y_ava_true_all=np.concatenate(y_ava_true_all,axis=0)
+
+confusion_mat=confusion_matrix(y_ava_true_all,y_ava_pred_all)
+disp=ConfusionMatrixDisplay(confusion_matrix=confusion_mat,display_labels=["normal","abnormal"])
+disp.plot(cmap=plt.cm.Blues)
+plt.title("Confusion Matrix")
+plt.show()
+print("y_ava_pred_all",y_ava_pred_all)
+print("y_ava_true_all",y_ava_true_all)
+
+print("Confusion Matrix:")
+cm=confusion_matrix(y_true_all,y_pred_all)
+print(cm)
+
+report=classification_report(y_true_all,y_pred_all,target_names=["Normal","Abnormal"])
+print("Classification Report:\n",report)
+
+precision=precision_score(y_true_all,y_pred_all,pos_label=1)
+f1=f1_score(y_true_all, y_pred_all, pos_label=1)
+recall=recall_score(y_true_all, y_pred_all, pos_label=1)
+print(f"Precision (Abnormal): {precision:.3f}")
+print(f"Recall (Abnormal): {recall:.3f}")
+print(f"F1-score (Abnormal): {f1:.3f}")
+
