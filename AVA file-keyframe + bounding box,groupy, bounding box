@@ -1,0 +1,141 @@
+
+for idx, row in df.iterrows():
+    video_id = row["video_id"]
+    timestamp = row["middle_frame_timestamp"]
+    x1, y1, x2, y2 = row["x1"], row["y1"], row["x2"], row["y2"]
+    action_id = row["action_id"]
+
+image_path="/content/keyframes/frame_00009.jpg"
+img=cv2.imread(image_path)
+H,W,C=img.shape
+pixel_x1 = int(row["x1"] * W)
+pixel_x2 = int(row["x2"] * W)
+pixel_y1 = int(row["y1"] * H)
+pixel_y2 = int(row["y2"] * H)
+
+start_sec = 900
+
+def get_keyframe_path(middle_frame_timestamp):
+    frame_idx = middle_frame_timestamp - start_sec + 1
+    filename = f"frame_{frame_idx:05d}.jpg"
+
+    path =f"/content/keyframes/{filename}"
+    return path
+for i in range(5):
+    row = df.iloc[i]
+    t = row["middle_frame_timestamp"]
+
+    path = get_keyframe_path(t)
+    print(f"timestamp = {t} => {path}")
+label_map={
+    1: "bend/bow (at the waist)", 2: "crawl",
+    3: "crouch/kneel",4: "dance",
+    5: "fall down",6: "get up",
+    7: "jump/leap", 8: "lie/sleep",
+    9: "martial art",10: "run/jog",
+    11: "sit", 12: "stand",13: "swim",
+    14: "walk", 15: "answer phone",
+    16: "brush teeth", 17: "carry/hold (an object)",
+    18: "catch (an object)", 19: "chop",
+    20: "climb (e.g., a mountain)",
+    21: "clink glass",  22: "close (e.g., a door, a box)",
+    23: "cook", 24: "cut",  25: "dig",
+    26: "dress/put on clothing", 27: "drink",
+    28: "drive (e.g., a car, a truck)", 29: "eat",
+    30: "enter",31: "exit", 32: "extract",
+    33: "fishing",34: "hit (an object)",
+    35: "kick (an object)", 36: "lift/pick up",
+    37: "listen (e.g., to music)",
+    38: "open (e.g., a window, a car door)",
+    39: "paint", 40: "play board game",
+    41: "play musical instrument",
+    42: "play with pets", 43: "point to (an object)",
+    44: "press",45: "pull (an object)",
+    46: "push (an object)",
+    47: "put down", 48: "read",
+    49: "ride (e.g., a bike, a car, a horse)",
+    50: "row boat", 51: "sail boat", 52: "shoot", 53: "shovel",
+    54: "smoke",  55: "stir", 56: "take a photo",
+    57: "text on/look at a cellphone", 58: "throw",
+    59: "touch (an object)", 60: "turn (e.g., a screwdriver)",
+    61: "watch (e.g., TV)", 62: "work on a computer", 63: "write",
+    64: "fight/hit (a person)",65: "give/serve (an object) to (a person)",
+    66: "grab (a person)", 67: "hand clap", 68: "hand shake",
+    69: "hand wave", 70: "hug (a person)",
+    71: "kick (a person)",  72: "kiss (a person)",73: "lift (a person)",
+    74: "listen to (a person)",  75: "play with kids",
+    76: "push (another person)", 77: "sing to (e.g., self, a person, a group)",
+    78: "take (an object) from (a person)",
+    79: "talk to (e.g., self, a person, a group)",
+    80: "watch (a person)"
+}
+y_ava_true_all = np.array([1, 9, 12, 64, 2, 52])
+
+def convert_to_binary(label):
+    abnormal_id = {9, 52, 64, 66, 71, 76}
+    return 1 if label in abnormal_id else 0
+
+convert_func = np.vectorize(convert_to_binary)
+y_ava_true_binary = convert_func(y_ava_true_all)
+
+binary_label_map = {0: "normal", 1: "abnormal"}
+print("original label:", y_ava_true_all)
+print("after label:", y_ava_true_binary)
+
+valid_action_ids=set(label_map.keys())
+df = df[df["action_id"].isin(valid_action_ids)]
+print("after filrt DataFrame total", len(df), "label")
+
+
+group_cols = ["video_id", "middle_frame_timestamp", "x1", "y1", "x2", "y2"]
+grouped = df.groupby(group_cols)["action_id"].apply(list).reset_index(name="action_ids")
+print("Grouped DataFrame:")
+print(grouped.head(10))
+
+grouped_subset = grouped.head(100)
+print("子集的筆數:", len(grouped_subset))
+
+def draw_bounding_box(img, x1_px, y1_px, x2_px, y2_px, color=(0, 255, 0)):
+
+    cv2.rectangle(img, (x1_px, y1_px), (x2_px, y2_px), color, 2)
+
+def get_keyframe_path(timestamp, offset=900):
+    frame_idx = timestamp - offset + 1  
+    filename = f"frame_{frame_idx:05d}.jpg"
+    path = f"/content/keyframes/{filename}"
+    return path
+
+
+
+for i in range(10): 
+    row = grouped.iloc[i]  
+    timestamp = row["middle_frame_timestamp"]
+    action_ids = row["action_ids"]
+
+    
+    image_path = get_keyframe_path(timestamp, offset=900)
+    img = cv2.imread(image_path)
+
+    if img is None:
+        print(f"imge is not exist : {image_path}")
+        continue  
+
+    H, W = img.shape[:2]
+    x1, y1, x2, y2 = row["x1"], row["y1"], row["x2"], row["y2"]
+    px1, py1 = int(x1 * W), int(y1 * H)
+    px2, py2 = int(x2 * W), int(y2 * H)
+
+    cv2.rectangle(img, (px1, py1), (px2, py2), (0, 255, 0), 2)
+
+    print(f"img: {image_path}, behavior label: {action_ids}")
+    cv2_imshow(img)
+
+print(grouped_subset.columns)
+
+
+
+
+
+
+
+
