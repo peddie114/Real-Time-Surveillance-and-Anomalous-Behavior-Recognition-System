@@ -1,0 +1,150 @@
+def fused_prediction_weighted(ucf_score, ava_scores, alpha=0.5, fusion_threshold=0.5):
+
+    ucf_score = float(ucf_score)
+    if len(ava_scores) > 0:
+
+        aggregated_ava_score = float(max(ava_scores))
+    else:
+        aggregated_ava_score = 0.0
+    fused_score = alpha * ucf_score + (1 - alpha) * aggregated_ava_score
+    fused_score = float(fused_score)
+    return fused_score, 1 if fused_score >= fusion_threshold else 0
+ucf_model_path="/content/drive/MyDrive/ColabNotebooks/crime_model.h5"
+ava_model_path="/content/drive/MyDrive/ColabNotebooks/AVACNN_model.h5"
+try:
+  ucf_model=load_model(ucf_model_path)
+  ava_model=load_model(ava_model_path)
+  print("Model loaded successfully")
+except Exception as e:
+  print("Model Load Failure",e)
+
+#yolo
+def detect_person(frame, conf_threshold=0.3):
+
+    results = yolo_model(frame, conf=conf_threshold)
+
+    for r in results:
+
+        for box in r.boxes:
+           
+            cls_id = int(box.cls[0])
+            if cls_id == 0:
+            
+                coords = box.xyxy[0].cpu().numpy().astype(int)
+                x1, y1, x2, y2 = coords
+                box_list.append((x1, y1, x2, y2))
+    return box_list
+def predict_anomaly(clip):
+   
+    clip_len = clip.shape[0]
+    resized_frames = []
+    for i in range(clip_len):
+        frame_resized = cv2.resize(clip[i], (64,64))
+        resized_frames.append(frame_resized)
+    resized_clip = np.array(resized_frames, dtype=np.float32) / 255.0
+
+    resized_clip = np.expand_dims(resized_clip, axis=0)  # shape: (1, clip_len, 64, 64, 3)
+    score = ucf_model.predict(resized_clip)
+    anomaly_score=score[0][0]
+    return anomaly_score
+
+def predict_action(person_crop):
+  person_crop=cv2.resize(person_crop,(224,224))
+  person_crop=person_crop.astype(np.float32)/255.0
+  person_crop=np.expand_dims(person_crop,axis=0)
+  prediction=ava_model.predict(person_crop)
+  return prediction[0][0]
+
+def progress_video_inference_weighted(video_path, clip_len=16, alpha=0.3, fusion_threshold=0.5):
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+    frame_count = 0
+    fused_predictions = []  
+    ucf_scores_list = []    
+    aggregated_ava_scores_list = [] 
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frames.append(frame)
+        frame_count += 1
+
+        if len(frames) == clip_len:
+            clip = np.array(frames, dtype=np.uint8)
+            ucf_score = predict_anomaly(clip)  
+            ucf_scores_list.append(ucf_score)
+
+     
+            mid_frame = frames[len(frames) // 2]
+            boxes = detect_person(mid_frame, conf_threshold=0.3)
+            ava_scores = []
+            for bbox in boxes:
+                x1, y1, x2, y2 = bbox
+                person_crop = mid_frame[y1:y2, x1:x2]
+                if person_crop.size == 0:
+                    continue
+                ava_score = predict_action(person_crop) 
+                ava_scores.append(ava_score)
+
+            fused_score, fused_label = fused_prediction_weighted(ucf_score, ava_scores, alpha=alpha, fusion_threshold=fusion_threshold)
+            fused_predictions.append(fused_label)
+            aggregated_ava_scores_list.append(max(ava_scores) if len(ava_scores) > 0 else 0.0)
+
+            print(f"Clip ending at frame {frame_count}: UCF_score={ucf_score:.3f}, "
+                  f"Aggregated_AVA_score={(max(ava_scores) if ava_scores else 0.0):.3f}, "
+                  f"Fused_score={fused_score:.3f}, Fused_label={fused_label}")
+
+            frames = []  
+
+    cap.release()
+    return ucf_scores_list, aggregated_ava_scores_list, fused_predictions
+
+!pip install yt-dlp
+!python -m yt_dlp --version
+!yt-dlp --format "bestvideo+bestaudio/best" --merge-output-format mp4 --output "taiwan administration.mp4" "https://youtu.be/BLrRln1Pcik?si=ZbnSeZ5ledIOrT3y"
+
+video_path="/content/taiwan administration.mp4"
+ucf_scores, ava_scores, fused_preds = progress_video_inference_weighted(video_path, clip_len=16, alpha=0.3, fusion_threshold=0.5)
+
+
+import matplotlib.pyplot as plt
+plt.hist(scores, bins=20, color='skyblue', edgecolor='black')
+plt.xlabel("Anomaly Score")
+plt.ylabel("Clip Count")
+plt.title("Distribution of Anomaly Scores")
+plt.show()
+print("Detecting",len(results),"Anomalous Character Behaviors")
+
+print(np.array2string(y_pred_all, separator=', '))
+print(np.array2string(y_true_all, separator=', '))
+
+print(np.array2string(y_ava_pred_all, separator=', '))
+print(np.array2string(y_ava_true_all, separator=', '))
+
+
+min_len = min(len(y_true_all), len(y_ava_true_all))
+y_true_fused = np.maximum(y_true_all[:min_len], y_ava_true_all[:min_len])
+
+min_len_pred = min(len(y_pred_all), len(y_ava_pred_all))
+y_pred_fused = np.maximum(y_pred_all[:min_len_pred], y_ava_pred_all[:min_len_pred])
+
+
+print("=== UCF Model Evaluation ===")
+print(classification_report(y_true_all, y_pred_all, target_names=["Normal", "Abnormal"]))
+print("Confusion Matrix (UCF):")
+print(confusion_matrix(y_true_all,y_pred_all))
+
+
+print("\n=== AVA Model Evaluation ===")
+print(classification_report(y_ava_pred_all, y_ava_true_all, target_names=["Normal", "Abnormal"]))
+print("Confusion Matrix (AVA):")
+print(confusion_matrix(y_ava_pred_all, y_ava_true_all))
+
+
+print("\n=== Fused Model Evaluation ===")
+print("Fused Ground Truth:", y_true_fused)
+print("Fused Predictions:", y_pred_fused)
+print(classification_report(y_true_fused, y_pred_fused, target_names=["Normal", "Abnormal"]))
+print("Confusion Matrix (Fused):")
+print(confusion_matrix(y_true_fused, y_pred_fused))
