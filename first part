@@ -1,0 +1,47 @@
+
+!pip install tensorflow opencv-python
+!pip install pandas opencv-python
+!pip install opencv-python torch torchvision
+!pip install -U tensorflow==2.13.0
+!pip install yt-dlp
+!sudo apt-get update
+!sudo apt-get install ffmpeg
+!pip install scikit-learn
+!pip install ultralytics
+from ultralytics import YOLO
+yolo_model=YOLO("yolov8s.pt")
+import os
+import glob
+import cv2
+import numpy as np
+import pandas as pd
+import math
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from sklearn import metrics
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from tensorflow.keras.models import Sequential,load_model
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dropout, GlobalAveragePooling2D, Dense,Conv3D,MaxPooling3D
+from tensorflow.keras.utils import Sequence, to_categorical
+from google.colab.patches import cv2_imshow
+from keras.layers import Flatten
+from sklearn.utils import class_weight
+from sklearn.metrics import classification_report, precision_score, recall_score, f1_score, roc_auc_score,roc_curve
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from keras.layers import BatchNormalization
+from tensorflow.keras import regularizers
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import BinaryCrossentropy
+
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
+from google.colab import drive
+drive.mount('/content/drive')
+
+
